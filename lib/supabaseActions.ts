@@ -141,11 +141,45 @@ export const deleteNote = async (id: string) => {
 };
 
 // Shopping actions
-export const createShoppingItem = async (spaceId: string, title: string, category: string) => {
+export const createShoppingList = async (spaceId: string, title: string, icon: string = '🛒') => {
+  const { data, error } = await supabase
+    .from('shopping_lists')
+    .insert({
+      space_id: spaceId,
+      title,
+      icon
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const updateShoppingList = async (id: string, updates: { title?: string; icon?: string }) => {
+  const { error } = await supabase
+    .from('shopping_lists')
+    .update(updates)
+    .eq('id', id);
+
+  if (error) throw error;
+};
+
+export const deleteShoppingList = async (id: string) => {
+  const { error } = await supabase
+    .from('shopping_lists')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+};
+
+export const createShoppingItem = async (spaceId: string, title: string, category: string, listId?: string) => {
   const { data, error } = await supabase
     .from('shopping_items')
     .insert({
       space_id: spaceId,
+      list_id: listId,
       title,
       category,
       added_by: 'ME',

@@ -79,6 +79,15 @@ export interface Event {
   spaceId?: string; // Link to space
 }
 
+export interface ShoppingList {
+  id: string;
+  title: string;
+  icon: string;
+  spaceId: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface ShoppingItem {
   id: string;
   title: string;
@@ -86,6 +95,7 @@ export interface ShoppingItem {
   addedBy: Assignee;
   isBought: boolean;
   spaceId?: string; // Link to space
+  listId?: string; // Link to shopping list
 }
 
 export type SpaceType = 'personal' | 'shared';
@@ -104,6 +114,7 @@ export interface AppState {
   notes: Note[];
   events: Event[];
   shoppingList: ShoppingItem[];
+  shoppingLists?: ShoppingList[];
   currentUser: User;
   partner: User;
   spaces?: Space[];
