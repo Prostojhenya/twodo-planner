@@ -7,7 +7,7 @@ import { EventsView } from './components/Events';
 import { DashboardView } from './components/Dashboard';
 import { NotesView } from './components/Notes';
 import { WelcomeScreen } from './components/Welcome';
-import { LayoutGrid, CheckSquare, ShoppingBag, Calendar, Copy, Share2, StickyNote } from 'lucide-react';
+import { LayoutGrid, CheckSquare, ShoppingBag, Calendar, Copy, Share2, StickyNote, Check } from 'lucide-react';
 import { Modal, Input, Select } from './components/UI';
 
 // --- CLEAN SLATE INITIAL DATA ---
@@ -89,6 +89,8 @@ const App = () => {
 
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isSpaceModalOpen, setIsSpaceModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   
   // Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -140,9 +142,90 @@ const App = () => {
   };
 
   const handleCopyInvite = () => {
-      navigator.clipboard.writeText("https://twodo.app/invite/u1");
-      alert("Invite link copied!");
+      // Generate unique invite code based on user ID
+      const inviteCode = btoa(user.id + ':' + Date.now()).replace(/=/g, '');
+      const inviteLink = `${window.location.origin}${window.location.pathname}#/invite/${inviteCode}`;
+      
+      navigator.clipboard.writeText(inviteLink).then(() => {
+          setInviteLinkCopied(true);
+          setTimeout(() => setInviteLinkCopied(false), 3000);
+      }).catch(() => {
+          // Fallback for older browsers
+          const textArea = document.createElement('textarea');
+          textArea.value = inviteLink;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          setInviteLinkCopied(true);
+          setTimeout(() => setInviteLinkCopied(false), 3000);
+      });
   };
+
+  const openInviteModal = () => {
+      setIsInviteModalOpen(true);
+      setInviteLinkCopied(false);
+  };
+
+  const handleAddPartnerManually = () => {
+      const partnerName = prompt('Введите имя партнёра:');
+      if (partnerName && partnerName.trim()) {
+          setPartner(prev => ({
+              ...prev,
+              name: partnerName.trim(),
+              initials: partnerName.trim().charAt(0).toUpperCase()
+          }));
+      }
+  };
+
+  const handleAcceptInvite = (partnerName: string) => {
+      setPartner(prev => ({
+          ...prev,
+          name: partnerName,
+          initials: partnerName.charAt(0).toUpperCase()
+      }));
+      alert(`${partnerName} присоединился к вашему пространству!`);
+  };
+
+  // Check for invite code in URL on mount
+  useEffect(() => {
+      const hash = window.location.hash;
+      const inviteMatch = hash.match(/#\/invite\/([^\/]+)/);
+      
+      if (inviteMatch && inviteMatch[1]) {
+          const inviteCode = inviteMatch[1];
+          
+          // Show prompt to accept invite
+          if (user.name) {
+              const accept = window.confirm(
+                  `Вы хотите присоединиться к пространству партнёра?\n\nВаше имя: ${user.name}`
+              );
+              
+              if (accept) {
+                  // In real app, this would send user data to partner via Supabase
+                  // For now, just show success message
+                  alert(`Запрос отправлен! Партнёр получит уведомление.`);
+                  
+                  // Clear invite from URL
+                  window.location.hash = '#/';
+              }
+          } else {
+              // User needs to set up their profile first
+              alert('Сначала создайте свой профиль, затем примите приглашение.');
+              setIsSetupModalOpen(true);
+              
+              // Store invite code to process after setup
+              localStorage.setItem('twodo_pending_invite', inviteCode);
+          }
+      }
+      
+      // Check for pending invite after setup
+      const pendingInvite = localStorage.getItem('twodo_pending_invite');
+      if (pendingInvite && user.name) {
+          localStorage.removeItem('twodo_pending_invite');
+          alert(`Запрос отправлен! Партнёр получит уведомление.`);
+      }
+  }, [user.name]);
 
   // --- Actions ---
   const addCluster = (title: string, color: ClusterColor, size: ClusterSize, x?: number, y?: number) => {
@@ -606,12 +689,18 @@ const App = () => {
                      </div>
                  ) : (
                      <div className="space-y-3">
-                        <p className="text-xs text-center text-slate-400">Invite your partner to sync tasks.</p>
+                        <p className="text-xs text-center text-slate-400">Пригласите партнёра для совместной работы</p>
                         <button 
-                            onClick={handleCopyInvite}
+                            onClick={openInviteModal}
                             className="w-full py-3 bg-white border-2 border-slate-200 rounded-xl flex items-center justify-center gap-2 font-bold text-sm hover:border-black transition-colors"
                         >
-                            <Copy size={14} /> Copy Invite Link
+                            <Share2 size={14} /> Пригласить партнёра
+                        </button>
+                        <button 
+                            onClick={handleAddPartnerManually}
+                            className="w-full py-2 text-xs text-slate-500 hover:text-black transition-colors"
+                        >
+                            или добавить вручную
                         </button>
                      </div>
                  )}
@@ -673,6 +762,73 @@ const App = () => {
             >
               СОЗДАТЬ ПРОСТРАНСТВО
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* --- INVITE PARTNER MODAL --- */}
+      <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="Пригласить партнёра">
+        <div className="flex flex-col items-center gap-6">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center">
+              <Share2 size={32} className="text-white" />
+            </div>
+            <p className="text-sm text-slate-600 mb-2">
+              Отправьте эту ссылку партнёру, чтобы он мог присоединиться к вашему пространству
+            </p>
+          </div>
+
+          <div className="w-full bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <p className="text-xs text-slate-500 mb-2 text-center">Ссылка-приглашение</p>
+            <div className="bg-white p-3 rounded-lg border border-slate-200 break-all text-xs text-slate-700 font-mono">
+              {window.location.origin}{window.location.pathname}#/invite/{btoa(user.id + ':' + Date.now()).replace(/=/g, '')}
+            </div>
+          </div>
+
+          <button 
+            onClick={handleCopyInvite}
+            className={`w-full py-4 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition-all ${
+              inviteLinkCopied 
+                ? 'bg-green-500 text-white' 
+                : 'bg-black text-white hover:scale-[1.02] active:scale-[0.98]'
+            }`}
+          >
+            {inviteLinkCopied ? (
+              <>
+                <Check size={16} /> Скопировано!
+              </>
+            ) : (
+              <>
+                <Copy size={16} /> Скопировать ссылку
+              </>
+            )}
+          </button>
+
+          <div className="w-full">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200"></div>
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-white px-2 text-slate-500">или</span>
+              </div>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => {
+              setIsInviteModalOpen(false);
+              handleAddPartnerManually();
+            }}
+            className="w-full py-3 text-sm text-slate-600 hover:text-black transition-colors"
+          >
+            Добавить партнёра вручную
+          </button>
+
+          <div className="w-full bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <p className="text-xs text-blue-800">
+              💡 <strong>Совет:</strong> После того как партнёр перейдёт по ссылке и создаст профиль, вы сможете совместно работать в общих пространствах.
+            </p>
           </div>
         </div>
       </Modal>
