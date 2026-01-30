@@ -398,8 +398,8 @@ const App = () => {
           }
           {activeTab === 'tasks' && 
             <TasksView 
-              tasks={tasks}
-              clusters={clusters}
+              tasks={localTasks}
+              clusters={localClusters}
               currentUser={user}
               partner={partner || { id: 'u2', name: '', initials: '', avatarColor: 'rose' }}
               notesCount={notes.length}
