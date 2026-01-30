@@ -31,6 +31,27 @@ export interface User {
   avatarColor: string;
 }
 
+// ============================================
+// SPACES - Фундамент Life OS
+// ============================================
+
+export type SpaceType = 'personal' | 'shared' | 'group';
+
+export interface SpaceMember {
+  userId: string;
+  role: 'owner' | 'member';
+}
+
+export interface Space {
+  id: string;
+  title: string;
+  description?: string;
+  type: SpaceType;
+  members: SpaceMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ClusterColor = 'slate' | 'rose' | 'blue' | 'emerald' | 'amber' | 'violet';
 export type ClusterSize = 'sm' | 'md' | 'lg';
 
@@ -53,6 +74,7 @@ export interface Task {
   deadline?: string;
   createdAt: number;
   clusterId?: string; // Link to a cluster
+  spaceId: string; // ❗ Задачи НЕ существуют без Space
   x?: number; // Dashboard X position (percentage)
   y?: number; // Dashboard Y position (percentage)
 }
@@ -63,6 +85,7 @@ export interface Note {
   content: string;
   createdAt: number;
   updatedAt: number;
+  spaceId: string; // Заметки привязаны к пространству
 }
 
 export interface Event {
@@ -73,6 +96,7 @@ export interface Event {
   location?: string;
   type: EventType;
   description?: string;
+  spaceId: string; // События привязаны к пространству
 }
 
 export interface ShoppingItem {
@@ -81,9 +105,12 @@ export interface ShoppingItem {
   category: string;
   addedBy: Assignee;
   isBought: boolean;
+  spaceId: string; // Покупки привязаны к пространству
 }
 
 export interface AppState {
+  spaces: Space[]; // ❗ Spaces — фундамент
+  currentSpaceId: string | null;
   tasks: Task[];
   clusters: Cluster[];
   notes: Note[];

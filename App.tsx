@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom'; // Using HashRouter strictly as per instructions for URL safety
 import { AppState, Task, Event, Note, ShoppingItem, User, Priority, Status, Assignee, EventType, Cluster, ClusterColor, ClusterSize } from './types';
+import { SpaceProvider, useSpaces } from './spaces/SpaceContext';
+import { useSpaceAwareActions } from './spaces/SpaceAwareApp';
 import { TasksView } from './components/Tasks';
 import { ShoppingView } from './components/Shopping';
 import { EventsView } from './components/Events';
@@ -28,7 +30,9 @@ const loadFromStorage = <T,>(key: string, fallback: T): T => {
   }
 };
 
-const App = () => {
+const AppContent = () => {
+  const { currentSpace } = useSpaces();
+  const { withSpaceId } = useSpaceAwareActions();
   // Onboarding State
   // 'welcome': Intro screen
   // 'app': Main app (which might be in 'setup' mode if no user data)
@@ -149,8 +153,9 @@ const App = () => {
     setClusters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  const addTask = (task: Omit<Task, 'id' | 'createdAt'>) => {
-    const newTask: Task = { ...task, id: Math.random().toString(36).substr(2, 9), createdAt: Date.now() };
+  const addTask = (task: Omit<Task, 'id' | 'createdAt' | 'spaceId'>) => {
+    const taskWithSpace = withSpaceId(task);
+    const newTask: Task = { ...taskWithSpace, id: Math.random().toString(36).substr(2, 9), createdAt: Date.now() };
     setTasks(prev => [newTask, ...prev]);
   };
   const updateTask = (id: string, updates: Partial<Task>) => {
@@ -162,13 +167,13 @@ const App = () => {
 
   // Notes Actions
   const addNote = (title: string, content: string) => {
-    const newNote: Note = {
+    const newNote: Note = withSpaceId({
       id: Math.random().toString(36).substr(2, 9),
       title,
       content,
       createdAt: Date.now(),
       updatedAt: Date.now()
-    };
+    });
     setNotes(prev => [newNote, ...prev]);
   };
   const updateNote = (id: string, updates: Partial<Note>) => {
@@ -178,13 +183,13 @@ const App = () => {
     setNotes(prev => prev.filter(n => n.id !== id));
   };
 
-  const addItem = (item: Omit<ShoppingItem, 'id' | 'isBought' | 'addedBy'>) => {
-    const newItem: ShoppingItem = { 
+  const addItem = (item: Omit<ShoppingItem, 'id' | 'isBought' | 'addedBy' | 'spaceId'>) => {
+    const newItem: ShoppingItem = withSpaceId({ 
       ...item, 
       id: Math.random().toString(36).substr(2, 9), 
       isBought: false, 
       addedBy: Assignee.ME 
-    };
+    });
     setShoppingList(prev => [newItem, ...prev]);
   };
   const toggleItem = (id: string) => {
@@ -194,8 +199,8 @@ const App = () => {
       setShoppingList(prev => prev.filter(i => i.id !== id));
   };
 
-  const addEvent = (event: Omit<Event, 'id'>) => {
-    const newEvent: Event = { ...event, id: Math.random().toString(36).substr(2, 9) };
+  const addEvent = (event: Omit<Event, 'id' | 'spaceId'>) => {
+    const newEvent: Event = withSpaceId({ ...event, id: Math.random().toString(36).substr(2, 9) });
     setEvents(prev => [...prev, newEvent]);
   };
 
@@ -303,8 +308,7 @@ const App = () => {
   }
 
   return (
-    <HashRouter>
-      <div className="min-h-screen font-sans text-black selection:bg-black selection:text-white">
+    <div className="min-h-screen font-sans text-black selection:bg-black selection:text-white">
         
         {/* Main Content Area */}
         <main className={`relative min-h-screen ${activeTab === 'dashboard' ? 'w-full h-screen overflow-hidden' : 'max-w-md mx-auto pb-32'}`}>
@@ -575,7 +579,17 @@ const App = () => {
         </div>
       </Modal>
 
-      </div>
+    </div>
+  );
+};
+
+// Главный компонент с провайдером Spaces
+const App = () => {
+  return (
+    <HashRouter>
+      <SpaceProvider>
+        <AppContent />
+      </SpaceProvider>
     </HashRouter>
   );
 };
