@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom'; // Using HashRouter strictly as per instructions for URL safety
-import { AppState, Task, Event, Note, ShoppingItem, User, Priority, Status, Assignee, EventType, Cluster, ClusterColor, ClusterSize } from './types';
-import { SpaceProvider, useSpaces } from './spaces/SpaceContext';
-import { useSpaceAwareActions } from './spaces/SpaceAwareApp';
+import { AppState, Task, Event, Note, ShoppingItem, User, Priority, Status, Assignee, EventType, Cluster, ClusterColor, ClusterSize, Space, SpaceType } from './types';
 import { TasksView } from './components/Tasks';
 import { ShoppingView } from './components/Shopping';
 import { EventsView } from './components/Events';
@@ -18,6 +16,10 @@ const INITIAL_TASKS: Task[] = [];
 const INITIAL_NOTES: Note[] = [];
 const INITIAL_SHOPPING: ShoppingItem[] = [];
 const INITIAL_EVENTS: Event[] = [];
+const INITIAL_SPACES: Space[] = [
+  { id: 's1', title: 'Пара', icon: '💑', type: 'shared', createdAt: Date.now() },
+  { id: 's2', title: 'Личное', icon: '👤', type: 'personal', createdAt: Date.now() }
+];
 
 // Helper to load state from Local Storage
 const loadFromStorage = <T,>(key: string, fallback: T): T => {
@@ -30,9 +32,7 @@ const loadFromStorage = <T,>(key: string, fallback: T): T => {
   }
 };
 
-const AppContent = () => {
-  const { currentSpace } = useSpaces();
-  const { withSpaceId } = useSpaceAwareActions();
+const App = () => {
   // Onboarding State
   // 'welcome': Intro screen
   // 'app': Main app (which might be in 'setup' mode if no user data)
@@ -47,6 +47,8 @@ const AppContent = () => {
   const [notes, setNotes] = useState<Note[]>(() => loadFromStorage('twodo_notes', INITIAL_NOTES));
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(() => loadFromStorage('twodo_shopping', INITIAL_SHOPPING));
   const [events, setEvents] = useState<Event[]>(() => loadFromStorage('twodo_events', INITIAL_EVENTS));
+  const [spaces, setSpaces] = useState<Space[]>(() => loadFromStorage('twodo_spaces', INITIAL_SPACES));
+  const [activeSpaceId, setActiveSpaceId] = useState<string>(() => loadFromStorage('twodo_active_space', 's1'));
   
   const [user, setUser] = useState<User>(() => loadFromStorage('twodo_user', { id: 'u1', name: '', initials: '', avatarColor: 'indigo' }));
   const [partner, setPartner] = useState<User>(() => loadFromStorage('twodo_partner', { id: 'u2', name: '', initials: '', avatarColor: 'rose' }));
@@ -67,6 +69,8 @@ const AppContent = () => {
   useEffect(() => { if (isSetupDone) localStorage.setItem('twodo_notes', JSON.stringify(notes)); }, [notes, isSetupDone]);
   useEffect(() => { if (isSetupDone) localStorage.setItem('twodo_shopping', JSON.stringify(shoppingList)); }, [shoppingList, isSetupDone]);
   useEffect(() => { if (isSetupDone) localStorage.setItem('twodo_events', JSON.stringify(events)); }, [events, isSetupDone]);
+  useEffect(() => { if (isSetupDone) localStorage.setItem('twodo_spaces', JSON.stringify(spaces)); }, [spaces, isSetupDone]);
+  useEffect(() => { localStorage.setItem('twodo_active_space', activeSpaceId); }, [activeSpaceId]);
   useEffect(() => { localStorage.setItem('twodo_view_state', JSON.stringify(dashboardViewState)); }, [dashboardViewState]);
   useEffect(() => { localStorage.setItem('twodo_user', JSON.stringify(user)); }, [user]);
   useEffect(() => { localStorage.setItem('twodo_partner', JSON.stringify(partner)); }, [partner]);
@@ -84,6 +88,7 @@ const AppContent = () => {
   const [newClusterCoords, setNewClusterCoords] = useState<{x: number, y: number} | null>(null);
 
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+  const [isSpaceModalOpen, setIsSpaceModalOpen] = useState(false);
   
   // Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -95,6 +100,10 @@ const AppContent = () => {
   const [newClusterTitle, setNewClusterTitle] = useState('');
   const [newClusterColor, setNewClusterColor] = useState<ClusterColor>('slate');
   const [newClusterSize, setNewClusterSize] = useState<ClusterSize>('md');
+
+  const [newSpaceTitle, setNewSpaceTitle] = useState('');
+  const [newSpaceIcon, setNewSpaceIcon] = useState('🏠');
+  const [newSpaceType, setNewSpaceType] = useState<SpaceType>('personal');
 
   // Setup Form State
   const [setupUserName, setSetupUserName] = useState(user.name || '');
@@ -144,7 +153,8 @@ const AppContent = () => {
       color,
       size,
       x: x ?? 50,
-      y: y ?? 20
+      y: y ?? 20,
+      spaceId: activeSpaceId
     };
     setClusters(prev => [...prev, newCluster]);
   };
@@ -153,9 +163,13 @@ const AppContent = () => {
     setClusters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  const addTask = (task: Omit<Task, 'id' | 'createdAt' | 'spaceId'>) => {
-    const taskWithSpace = withSpaceId(task);
-    const newTask: Task = { ...taskWithSpace, id: Math.random().toString(36).substr(2, 9), createdAt: Date.now() };
+  const addTask = (task: Omit<Task, 'id' | 'createdAt'>) => {
+    const newTask: Task = { 
+      ...task, 
+      id: Math.random().toString(36).substr(2, 9), 
+      createdAt: Date.now(),
+      spaceId: activeSpaceId
+    };
     setTasks(prev => [newTask, ...prev]);
   };
   const updateTask = (id: string, updates: Partial<Task>) => {
@@ -167,13 +181,14 @@ const AppContent = () => {
 
   // Notes Actions
   const addNote = (title: string, content: string) => {
-    const newNote: Note = withSpaceId({
+    const newNote: Note = {
       id: Math.random().toString(36).substr(2, 9),
       title,
       content,
       createdAt: Date.now(),
-      updatedAt: Date.now()
-    });
+      updatedAt: Date.now(),
+      spaceId: activeSpaceId
+    };
     setNotes(prev => [newNote, ...prev]);
   };
   const updateNote = (id: string, updates: Partial<Note>) => {
@@ -183,13 +198,14 @@ const AppContent = () => {
     setNotes(prev => prev.filter(n => n.id !== id));
   };
 
-  const addItem = (item: Omit<ShoppingItem, 'id' | 'isBought' | 'addedBy' | 'spaceId'>) => {
-    const newItem: ShoppingItem = withSpaceId({ 
+  const addItem = (item: Omit<ShoppingItem, 'id' | 'isBought' | 'addedBy'>) => {
+    const newItem: ShoppingItem = { 
       ...item, 
       id: Math.random().toString(36).substr(2, 9), 
       isBought: false, 
-      addedBy: Assignee.ME 
-    });
+      addedBy: Assignee.ME,
+      spaceId: activeSpaceId
+    };
     setShoppingList(prev => [newItem, ...prev]);
   };
   const toggleItem = (id: string) => {
@@ -199,9 +215,38 @@ const AppContent = () => {
       setShoppingList(prev => prev.filter(i => i.id !== id));
   };
 
-  const addEvent = (event: Omit<Event, 'id' | 'spaceId'>) => {
-    const newEvent: Event = withSpaceId({ ...event, id: Math.random().toString(36).substr(2, 9) });
+  const addEvent = (event: Omit<Event, 'id'>) => {
+    const newEvent: Event = { 
+      ...event, 
+      id: Math.random().toString(36).substr(2, 9),
+      spaceId: activeSpaceId
+    };
     setEvents(prev => [...prev, newEvent]);
+  };
+
+  const addSpace = (title: string, icon: string, type: SpaceType) => {
+    const newSpace: Space = {
+      id: Math.random().toString(36).substr(2, 9),
+      title,
+      icon,
+      type,
+      createdAt: Date.now()
+    };
+    setSpaces(prev => [...prev, newSpace]);
+    setActiveSpaceId(newSpace.id);
+  };
+
+  const openCreateSpaceModal = () => {
+    setNewSpaceTitle('');
+    setNewSpaceIcon('🏠');
+    setNewSpaceType('personal');
+    setIsSpaceModalOpen(true);
+  };
+
+  const handleCreateSpaceSubmit = () => {
+    if (!newSpaceTitle.trim()) return;
+    addSpace(newSpaceTitle, newSpaceIcon, newSpaceType);
+    setIsSpaceModalOpen(false);
   };
 
   // --- Global Handlers ---
@@ -277,11 +322,11 @@ const AppContent = () => {
   };
 
   const appState: AppState = {
-    tasks,
-    clusters,
-    notes,
-    shoppingList,
-    events,
+    tasks: tasks.filter(t => t.spaceId === activeSpaceId),
+    clusters: clusters.filter(c => c.spaceId === activeSpaceId),
+    notes: notes.filter(n => n.spaceId === activeSpaceId),
+    shoppingList: shoppingList.filter(s => s.spaceId === activeSpaceId),
+    events: events.filter(e => e.spaceId === activeSpaceId),
     currentUser: user,
     partner: partner,
   };
@@ -308,7 +353,8 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen font-sans text-black selection:bg-black selection:text-white">
+    <HashRouter>
+      <div className="min-h-screen font-sans text-black selection:bg-black selection:text-white">
         
         {/* Main Content Area */}
         <main className={`relative min-h-screen ${activeTab === 'dashboard' ? 'w-full h-screen overflow-hidden' : 'max-w-md mx-auto pb-32'}`}>
@@ -325,6 +371,10 @@ const AppContent = () => {
                 onRequestNewTask={openCreateTaskModal}
                 onHubClick={() => setIsSetupModalOpen(true)}
                 onUpdateTask={updateTask}
+                spaces={spaces}
+                activeSpaceId={activeSpaceId}
+                onSelectSpace={setActiveSpaceId}
+                onAddSpace={openCreateSpaceModal}
             />
           }
           {activeTab === 'tasks' && 
@@ -579,17 +629,55 @@ const AppContent = () => {
         </div>
       </Modal>
 
-    </div>
-  );
-};
+      {/* --- CREATE SPACE MODAL --- */}
+      <Modal isOpen={isSpaceModalOpen} onClose={() => setIsSpaceModalOpen(false)} title="Новое пространство">
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-full">
+            <label className="block text-xs font-bold text-black uppercase tracking-widest mb-3 text-center">Название</label>
+            <Input 
+              autoFocus
+              placeholder="например, Семья"
+              value={newSpaceTitle}
+              onChange={(e) => setNewSpaceTitle(e.target.value)}
+              className="text-center !mb-0" 
+            />
+          </div>
 
-// Главный компонент с провайдером Spaces
-const App = () => {
-  return (
-    <HashRouter>
-      <SpaceProvider>
-        <AppContent />
-      </SpaceProvider>
+          <div className="w-full">
+            <label className="block text-xs font-bold text-black uppercase tracking-widest mb-3 text-center">Иконка</label>
+            <Input 
+              placeholder="🏠"
+              value={newSpaceIcon}
+              onChange={(e) => setNewSpaceIcon(e.target.value)}
+              className="text-center text-2xl !mb-0" 
+              maxLength={2}
+            />
+          </div>
+
+          <div className="w-full">
+            <label className="block text-xs font-bold text-black uppercase tracking-widest mb-3 text-center">Тип</label>
+            <Select 
+              value={newSpaceType} 
+              onChange={(e) => setNewSpaceType(e.target.value as SpaceType)}
+            >
+              <option value="personal">Личное</option>
+              <option value="shared">Общее</option>
+            </Select>
+          </div>
+
+          <div className="mt-4 w-full">
+            <button 
+              onClick={handleCreateSpaceSubmit}
+              disabled={!newSpaceTitle.trim()}
+              className="bg-black text-white w-full py-5 rounded-full font-black text-lg shadow-xl shadow-slate-300 disabled:opacity-50 hover:scale-[1.02] active:scale-[0.98] transition-all"
+            >
+              СОЗДАТЬ ПРОСТРАНСТВО
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      </div>
     </HashRouter>
   );
 };

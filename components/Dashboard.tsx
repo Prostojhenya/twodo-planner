@@ -1,10 +1,8 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { AppState, Status, Assignee, Cluster, ClusterColor, ClusterSize, Task } from '../types';
+import { AppState, Status, Assignee, Cluster, ClusterColor, ClusterSize, Task, Space } from '../types';
 import { AssigneeAvatar, PriorityBadge } from './UI';
 import { CheckCircle2, ShoppingCart, Calendar, LayoutGrid, Plus, FolderPlus, ArrowUpRight, Check, StickyNote } from 'lucide-react';
-import { SpaceSelector } from '../spaces/SpaceSelector';
-import { SpaceCreateButton } from '../spaces/SpaceCreateModal';
-import { useSpaces } from '../spaces/SpaceContext';
+import { SpaceSwitcher } from './SpaceSwitcher';
 
 interface DashboardProps {
   state: AppState;
@@ -17,6 +15,10 @@ interface DashboardProps {
   onRequestNewTask: (clusterId: string, coords?: {x: number, y: number}) => void;
   onUpdateTask: (id: string, updates: Partial<Task>) => void;
   onHubClick?: () => void;
+  spaces?: Space[];
+  activeSpaceId?: string;
+  onSelectSpace?: (spaceId: string) => void;
+  onAddSpace?: () => void;
 }
 
 // Visual helpers
@@ -55,7 +57,7 @@ interface DragState {
   size?: ClusterSize;
 }
 
-export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onViewStateChange, onNavigate, onSelectCluster, onUpdateCluster, onRequestNewCluster, onRequestNewTask, onUpdateTask, onHubClick }) => {
+export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onViewStateChange, onNavigate, onSelectCluster, onUpdateCluster, onRequestNewCluster, onRequestNewTask, onUpdateTask, onHubClick, spaces, activeSpaceId, onSelectSpace, onAddSpace }) => {
   const { tasks, shoppingList, events, clusters, notes, currentUser, partner } = state;
   const shoppingCount = shoppingList.filter(i => !i.isBought).length;
   const eventsCount = events.filter(e => new Date(e.date) >= new Date()).length;
@@ -381,27 +383,10 @@ export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onVi
   const shopNode = { x: 50, y: 80, id: 'sys_shop', type: 'shop', title: 'Shop', count: shoppingCount, color: 'slate' as ClusterColor, icon: <ShoppingCart size={20} />, onClick: () => onNavigate('shopping') };
   const eventNode = { x: 50, y: 20, id: 'sys_events', type: 'events', title: 'Events', count: eventsCount, color: 'slate' as ClusterColor, icon: <Calendar size={20} />, onClick: () => onNavigate('calendar') };
 
-  const { currentSpace } = useSpaces();
-
   return (
-    <div className="h-[100dvh] w-full relative flex flex-col">
-      {/* Space Selector - Fixed at top */}
-      <div className="absolute top-0 left-0 right-0 z-50 p-4 bg-gradient-to-b from-slate-50 to-transparent pointer-events-none">
-        <div className="flex items-center gap-3 pointer-events-auto">
-          <SpaceSelector />
-          <SpaceCreateButton />
-        </div>
-        {currentSpace && (
-          <div className="mt-2 text-xs text-slate-500 ml-1">
-            {currentSpace.description}
-          </div>
-        )}
-      </div>
-
-      {/* Dashboard Canvas */}
-      <div 
+    <div 
         ref={containerRef} 
-        className="flex-1 w-full relative flex items-center justify-center touch-none select-none bg-slate-50 overflow-hidden"
+        className="h-[100dvh] w-full relative flex flex-col items-center justify-center touch-none select-none bg-slate-50 overflow-hidden"
         style={{
             backgroundImage: `
                 linear-gradient(to right, #e2e8f0 1px, transparent 1px),
@@ -614,7 +599,16 @@ export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onVi
          <h1 className="text-4xl font-black text-slate-300 tracking-tighter">TwoDo</h1>
       </div>
 
-      </div>
+      {/* Space Switcher */}
+      {spaces && spaces.length > 0 && activeSpaceId && onSelectSpace && onAddSpace && (
+        <SpaceSwitcher
+          spaces={spaces}
+          activeSpaceId={activeSpaceId}
+          onSelectSpace={onSelectSpace}
+          onAddSpace={onAddSpace}
+        />
+      )}
+
     </div>
   );
 };
