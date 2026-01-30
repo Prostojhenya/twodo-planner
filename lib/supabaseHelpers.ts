@@ -52,15 +52,21 @@ export const getUserProfile = async (userId: string): Promise<User | null> => {
     .from('users')
     .select('*')
     .eq('id', userId)
-    .single();
+    .limit(1);
 
-  if (error) return null;
+  if (error) {
+    console.error('Error getting user profile:', error);
+    return null;
+  }
+  
+  if (!data || data.length === 0) return null;
 
+  const userData = data[0];
   return {
-    id: data.id,
-    name: data.name,
-    initials: data.initials,
-    avatarColor: data.avatar_color
+    id: userData.id,
+    name: userData.name,
+    initials: userData.initials,
+    avatarColor: userData.avatar_color
   };
 };
 

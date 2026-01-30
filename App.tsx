@@ -17,7 +17,6 @@ const App = () => {
   const [user, setUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeSpaceId, setActiveSpaceId] = useState<string>('');
   
   // Load data from Supabase
@@ -52,25 +51,15 @@ const App = () => {
 
   // Check auth state
   useEffect(() => {
-    console.log('Initializing auth...');
-    
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        console.log('Session:', session ? 'exists' : 'none');
-        if (session?.user) {
-          setUserId(session.user.id);
-          loadUserProfile(session.user.id);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Auth error:', err);
-        setError('Ошибка подключения к Supabase: ' + err.message);
-        setLoading(false);
-      });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUserId(session.user.id);
+        loadUserProfile(session.user.id);
+      }
+      setLoading(false);
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('Auth state changed:', _event);
       if (session?.user) {
         setUserId(session.user.id);
         loadUserProfile(session.user.id);
@@ -91,19 +80,35 @@ const App = () => {
   }, [spaces, activeSpaceId]);
 
   const loadUserProfile = async (uid: string) => {
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', uid)
-      .single();
+    console.log('🔍 Loading user profile for:', uid);
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', uid)
+        .limit(1);
 
-    if (data) {
-      setUser({
-        id: data.id,
-        name: data.name,
-        initials: data.initials,
-        avatarColor: data.avatar_color
-      });
+      console.log('📊 User profile response:', { data, error });
+
+      if (error) {
+        console.error('❌ Error loading user profile:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const userData = data[0];
+        console.log('✅ User profile loaded:', userData);
+        setUser({
+          id: userData.id,
+          name: userData.name,
+          initials: userData.initials,
+          avatarColor: userData.avatar_color
+        });
+      } else {
+        console.warn('⚠️ No user profile found for:', uid);
+      }
+    } catch (err) {
+      console.error('💥 Failed to load user profile:', err);
     }
   };
 
@@ -212,27 +217,7 @@ const App = () => {
   }, [userId, user]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-center">
-        <div className="text-4xl font-black mb-4">TwoDo</div>
-        <div className="text-slate-500">Загрузка...</div>
-      </div>
-    </div>;
-  }
-
-  if (error) {
-    return <div className="min-h-screen flex items-center justify-center bg-red-50">
-      <div className="text-center p-8">
-        <div className="text-4xl font-black mb-4 text-red-600">Ошибка</div>
-        <div className="text-slate-700 mb-4">{error}</div>
-        <button 
-          onClick={() => window.location.reload()} 
-          className="bg-black text-white px-6 py-3 rounded-full font-bold"
-        >
-          Перезагрузить
-        </button>
-      </div>
-    </div>;
+    return <div className="min-h-screen flex items-center justify-center">Загрузка...</div>;
   }
 
   if (!userId) {

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Supabase Anon Access</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Тест доступа к users с anon ключом</h1>
+  <button onclick="testAccess()">Проверить доступ</button>
+  <pre id="result"></pre>
+
+  <script>
+    const supabaseUrl = 'https://ihivunmndpsysxdtedti.supabase.co';
+    const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImloaXZ1bm1uZHBzeXN4ZHRlZHRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3Nzg0OTksImV4cCI6MjA4NTM1NDQ5OX0.yyPVXLtFQnDl1DmcnUREcXIFrLVP-4VSGGO2qzzfAdo';
+    
+    const supabase = window.supabase.createClient(supabaseUrl, anonKey);
+
+    async function testAccess() {
+      const result = document.getElementById('result');
+      result.textContent = 'Проверка...\n';
+
+      try {
+        // Тест 1: Простой запрос
+        result.textContent += '\n1️⃣ Тест простого запроса...\n';
+        const { data: test1, error: error1 } = await supabase
+          .from('users')
+          .select('*')
+          .limit(1);
+        
+        if (error1) {
+          result.textContent += `❌ Ошибка: ${JSON.stringify(error1, null, 2)}\n`;
+        } else {
+          result.textContent += `✅ Успех! Найдено записей: ${test1?.length || 0}\n`;
+        }
+
+        // Тест 2: Запрос с фильтром
+        result.textContent += '\n2️⃣ Тест запроса с фильтром...\n';
+        const userId = '762eb16b-154c-4845-b66b-e2d820170829';
+        const { data: test2, error: error2 } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+        
+        if (error2) {
+          result.textContent += `❌ Ошибка: ${JSON.stringify(error2, null, 2)}\n`;
+        } else {
+          result.textContent += `✅ Успех! Данные: ${JSON.stringify(test2, null, 2)}\n`;
+        }
+
+        // Тест 3: Проверка RLS
+        result.textContent += '\n3️⃣ Проверка RLS статуса...\n';
+        result.textContent += 'Если видите данные выше, значит RLS отключен или политики настроены правильно.\n';
+
+      } catch (err) {
+        result.textContent += `\n💥 Критическая ошибка: ${err.message}\n`;
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -20,12 +20,23 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
       setLoading(true);
       
       try {
-        // Fetch spaces
-        const { data: spacesData } = await supabase
+        // Fetch spaces (owned by user)
+        const { data: ownedSpaces } = await supabase
           .from('spaces')
           .select('*')
-          .or(`owner_id.eq.${userId},id.in.(select space_id from space_members where user_id = ${userId})`)
+          .eq('owner_id', userId)
           .order('created_at', { ascending: true });
+        
+        // Fetch spaces (where user is member)
+        const { data: memberSpaces } = await supabase
+          .from('space_members')
+          .select('space_id, spaces(*)')
+          .eq('user_id', userId);
+        
+        const spacesData = [
+          ...(ownedSpaces || []),
+          ...(memberSpaces?.map(m => m.spaces).filter(Boolean) || [])
+        ];
         
         if (spacesData) {
           setSpaces(spacesData.map(s => ({
@@ -142,11 +153,22 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
         }
 
         // Fetch partner
-        const { data: sharedSpaces } = await supabase
+        const { data: ownedSharedSpaces } = await supabase
           .from('spaces')
           .select('id')
           .eq('type', 'shared')
-          .or(`owner_id.eq.${userId},id.in.(select space_id from space_members where user_id = ${userId})`);
+          .eq('owner_id', userId);
+        
+        const { data: memberSharedSpaces } = await supabase
+          .from('space_members')
+          .select('space_id, spaces!inner(id, type)')
+          .eq('user_id', userId)
+          .eq('spaces.type', 'shared');
+        
+        const sharedSpaces = [
+          ...(ownedSharedSpaces || []),
+          ...(memberSharedSpaces?.map(m => ({ id: m.space_id })) || [])
+        ];
 
         if (sharedSpaces && sharedSpaces.length > 0) {
           const { data: members } = await supabase
@@ -157,18 +179,21 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
             .limit(1);
 
           if (members && members.length > 0) {
-            const { data: partnerData } = await supabase
+            const { data: partnerData, error: partnerError } = await supabase
               .from('users')
               .select('*')
               .eq('id', members[0].user_id)
-              .single();
+              .limit(1);
 
-            if (partnerData) {
+            if (partnerError) {
+              console.error('Error loading partner:', partnerError);
+            } else if (partnerData && partnerData.length > 0) {
+              const partner = partnerData[0];
               setPartner({
-                id: partnerData.id,
-                name: partnerData.name,
-                initials: partnerData.initials,
-                avatarColor: partnerData.avatar_color
+                id: partner.id,
+                name: partner.name,
+                initials: partner.initials,
+                avatarColor: partner.avatar_color
               });
             }
           }
