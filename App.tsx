@@ -3,7 +3,7 @@ import { HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { useSupabaseData } from './lib/useSupabaseData';
 import * as actions from './lib/supabaseActions';
-import { AppState, User, Priority, Status, Assignee, ClusterColor, ClusterSize, SpaceType, Cluster, Task } from './types';
+import { AppState, User, Priority, Status, Assignee, ClusterColor, ClusterSize, SpaceType, Cluster, Task, ShoppingItem } from './types';
 import { TasksView } from './components/Tasks';
 import { ShoppingView } from './components/Shopping';
 import { EventsView } from './components/Events';
@@ -20,11 +20,12 @@ const App = () => {
   const [activeSpaceId, setActiveSpaceId] = useState<string>('');
   
   // Load data from Supabase
-  const { tasks: remoteTasks, clusters: remoteClusters, notes, events, shoppingList, spaces, partner, loading: dataLoading } = useSupabaseData(userId, activeSpaceId);
+  const { tasks: remoteTasks, clusters: remoteClusters, notes, events, shoppingList: remoteShoppingList, spaces, partner, loading: dataLoading } = useSupabaseData(userId, activeSpaceId);
 
   // Local state for optimistic updates
   const [localClusters, setLocalClusters] = useState(remoteClusters);
   const [localTasks, setLocalTasks] = useState(remoteTasks);
+  const [localShoppingList, setLocalShoppingList] = useState(remoteShoppingList);
 
   // Sync remote data to local state
   useEffect(() => {
@@ -34,6 +35,10 @@ const App = () => {
   useEffect(() => {
     setLocalTasks(remoteTasks);
   }, [remoteTasks]);
+
+  useEffect(() => {
+    setLocalShoppingList(remoteShoppingList);
+  }, [remoteShoppingList]);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'notes' | 'shopping' | 'calendar'>('dashboard');
@@ -235,6 +240,62 @@ const App = () => {
     }
   };
 
+  // Shopping optimistic handlers
+  const handleAddShoppingItem = async (item: { title: string; category: string }) => {
+    if (!activeSpaceId) return;
+    
+    const tempId = `temp-${Date.now()}`;
+    const tempItem: ShoppingItem = {
+      id: tempId,
+      title: item.title,
+      category: item.category,
+      addedBy: 'ME',
+      isBought: false,
+      spaceId: activeSpaceId
+    };
+    
+    // Optimistic update
+    setLocalShoppingList(prev => [tempItem, ...prev]);
+    
+    // Background DB create
+    try {
+      const newItem = await actions.createShoppingItem(activeSpaceId, item.title, item.category);
+      setLocalShoppingList(prev => prev.map(i => i.id === tempId ? { ...tempItem, id: newItem.id } : i));
+    } catch (err) {
+      console.error('Error creating shopping item:', err);
+      setLocalShoppingList(prev => prev.filter(i => i.id !== tempId));
+    }
+  };
+
+  const handleToggleShoppingItem = async (id: string) => {
+    const item = localShoppingList.find(i => i.id === id);
+    if (!item) return;
+    
+    // Optimistic update
+    setLocalShoppingList(prev => prev.map(i => i.id === id ? { ...i, isBought: !i.isBought } : i));
+    
+    // Background DB update
+    try {
+      await actions.toggleShoppingItem(id, item.isBought);
+    } catch (err) {
+      console.error('Error toggling shopping item:', err);
+      setLocalShoppingList(remoteShoppingList);
+    }
+  };
+
+  const handleDeleteShoppingItem = async (id: string) => {
+    // Optimistic delete
+    setLocalShoppingList(prev => prev.filter(i => i.id !== id));
+    
+    // Background DB delete
+    try {
+      await actions.deleteShoppingItem(id);
+    } catch (err) {
+      console.error('Error deleting shopping item:', err);
+      setLocalShoppingList(remoteShoppingList);
+    }
+  };
+
   const handleCreateCluster = async () => {
     if (!newClusterTitle.trim() || !activeSpaceId) return;
     
@@ -346,7 +407,7 @@ const App = () => {
     tasks: localTasks,
     clusters: localClusters,
     notes,
-    shoppingList,
+    shoppingList: localShoppingList,
     events,
     currentUser: user,
     partner: partner || { id: 'u2', name: '', initials: '', avatarColor: 'rose' },
@@ -459,15 +520,10 @@ const App = () => {
           }
           {activeTab === 'shopping' && 
             <ShoppingView 
-              items={shoppingList}
-              addItem={async (item) => {
-                if (activeSpaceId) await actions.createShoppingItem(activeSpaceId, item.title, item.category);
-              }}
-              toggleItem={(id) => {
-                const item = shoppingList.find(i => i.id === id);
-                if (item) actions.toggleShoppingItem(id, item.isBought);
-              }}
-              deleteItem={(id) => actions.deleteShoppingItem(id)}
+              items={localShoppingList}
+              addItem={handleAddShoppingItem}
+              toggleItem={handleToggleShoppingItem}
+              deleteItem={handleDeleteShoppingItem}
               currentUser={user}
               partner={partner || { id: 'u2', name: '', initials: '', avatarColor: 'rose' }}
             />
