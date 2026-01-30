@@ -3,7 +3,7 @@ import { HashRouter } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { useSupabaseData } from './lib/useSupabaseData';
 import * as actions from './lib/supabaseActions';
-import { AppState, User, Priority, Status, Assignee, ClusterColor, ClusterSize, SpaceType } from './types';
+import { AppState, User, Priority, Status, Assignee, ClusterColor, ClusterSize, SpaceType, Cluster, Task } from './types';
 import { TasksView } from './components/Tasks';
 import { ShoppingView } from './components/Shopping';
 import { EventsView } from './components/Events';
@@ -20,7 +20,20 @@ const App = () => {
   const [activeSpaceId, setActiveSpaceId] = useState<string>('');
   
   // Load data from Supabase
-  const { tasks, clusters, notes, events, shoppingList, spaces, partner, loading: dataLoading } = useSupabaseData(userId, activeSpaceId);
+  const { tasks: remoteTasks, clusters: remoteClusters, notes, events, shoppingList, spaces, partner, loading: dataLoading } = useSupabaseData(userId, activeSpaceId);
+
+  // Local state for optimistic updates
+  const [localClusters, setLocalClusters] = useState(remoteClusters);
+  const [localTasks, setLocalTasks] = useState(remoteTasks);
+
+  // Sync remote data to local state
+  useEffect(() => {
+    setLocalClusters(remoteClusters);
+  }, [remoteClusters]);
+
+  useEffect(() => {
+    setLocalTasks(remoteTasks);
+  }, [remoteTasks]);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'notes' | 'shopping' | 'calendar'>('dashboard');
@@ -120,7 +133,7 @@ const App = () => {
     let finalY = newTaskCoords?.y;
 
     if (!finalX && targetClusterIdForTask) {
-      const cluster = clusters.find(c => c.id === targetClusterIdForTask);
+      const cluster = localClusters.find(c => c.id === targetClusterIdForTask);
       if (cluster) {
         const angle = Math.random() * 2 * Math.PI;
         const radius = 12 + Math.random() * 6;
@@ -149,10 +162,67 @@ const App = () => {
     setNewTaskCoords(undefined);
   };
 
+  // Optimistic action wrappers
+  const handleUpdateCluster = async (id: string, updates: Partial<Cluster>) => {
+    // Optimistic update
+    setLocalClusters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    
+    // Background DB update
+    try {
+      await actions.updateCluster(id, updates);
+    } catch (err) {
+      console.error('Error updating cluster:', err);
+      // Revert on error
+      setLocalClusters(remoteClusters);
+    }
+  };
+
+  const handleUpdateTask = async (id: string, updates: Partial<Task>) => {
+    // Optimistic update
+    setLocalTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    
+    // Background DB update
+    try {
+      await actions.updateTask(id, updates);
+    } catch (err) {
+      console.error('Error updating task:', err);
+      // Revert on error
+      setLocalTasks(remoteTasks);
+    }
+  };
+
   const handleCreateCluster = async () => {
     if (!newClusterTitle.trim() || !activeSpaceId) return;
-    await actions.createCluster(activeSpaceId, newClusterTitle, newClusterColor, newClusterSize, newClusterCoords?.x, newClusterCoords?.y);
+    
+    // Create temporary ID for optimistic update
+    const tempId = `temp-${Date.now()}`;
+    const tempCluster: Cluster = {
+      id: tempId,
+      title: newClusterTitle,
+      color: newClusterColor,
+      size: newClusterSize,
+      x: newClusterCoords?.x ?? 50,
+      y: newClusterCoords?.y ?? 20,
+      createdAt: Date.now(),
+      spaceId: activeSpaceId
+    };
+    
+    // Optimistic update
+    setLocalClusters(prev => [...prev, tempCluster]);
     setIsClusterModalOpen(false);
+    setNewClusterTitle('');
+    setNewClusterCoords(null);
+    
+    // Background DB create
+    try {
+      const newCluster = await actions.createCluster(activeSpaceId, newClusterTitle, newClusterColor, newClusterSize, newClusterCoords?.x, newClusterCoords?.y);
+      // Replace temp with real
+      setLocalClusters(prev => prev.map(c => c.id === tempId ? { ...tempCluster, id: newCluster.id } : c));
+    } catch (err) {
+      console.error('Error creating cluster:', err);
+      // Remove temp on error
+      setLocalClusters(prev => prev.filter(c => c.id !== tempId));
+    }
   };
 
   const handleCreateSpace = async () => {
@@ -229,8 +299,8 @@ const App = () => {
   }
 
   const appState: AppState = {
-    tasks,
-    clusters,
+    tasks: localTasks,
+    clusters: localClusters,
     notes,
     shoppingList,
     events,
@@ -264,7 +334,7 @@ const App = () => {
               onViewStateChange={setDashboardViewState}
               onNavigate={setActiveTab}
               onSelectCluster={setCurrentClusterId}
-              onUpdateCluster={(id, updates) => actions.updateCluster(id, updates)}
+              onUpdateCluster={handleUpdateCluster}
               onRequestNewCluster={(coords) => {
                 setNewClusterCoords(coords || null);
                 setIsClusterModalOpen(true);
@@ -274,7 +344,7 @@ const App = () => {
                 setNewTaskCoords(coords);
                 setIsTaskModalOpen(true);
               }}
-              onUpdateTask={(id, updates) => actions.updateTask(id, updates)}
+              onUpdateTask={handleUpdateTask}
               onHubClick={() => {}}
               spaces={spaces}
               activeSpaceId={activeSpaceId}
@@ -297,8 +367,8 @@ const App = () => {
               addCluster={async (title, color, size) => {
                 if (activeSpaceId) await actions.createCluster(activeSpaceId, title, color, size);
               }}
-              updateCluster={(id, updates) => actions.updateCluster(id, updates)}
-              updateTask={(id, updates) => actions.updateTask(id, updates)}
+              updateCluster={handleUpdateCluster}
+              updateTask={handleUpdateTask}
               deleteTask={(id) => actions.deleteTask(id)}
               onRequestNewTask={() => {
                 setTargetClusterIdForTask(currentClusterId && currentClusterId !== 'ALL' && currentClusterId !== 'GENERAL' ? currentClusterId : undefined);

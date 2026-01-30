@@ -69,14 +69,6 @@ export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onVi
   const pointersRef = useRef<Map<number, { x: number, y: number }>>(new Map());
   const prevPinchRef = useRef<{ dist: number, center: { x: number, y: number } } | null>(null);
 
-  // --- Optimistic position updates (local state during drag) ---
-  const [optimisticPositions, setOptimisticPositions] = useState<Map<string, { x: number, y: number }>>(new Map());
-  
-  // Clear optimistic positions when state updates
-  useEffect(() => {
-    setOptimisticPositions(new Map());
-  }, [clusters, tasks]);
-
   // --- Layout Engine ---
   const containerSize = 100; // 100x100 coordinate system
   const centerX = 50;
@@ -289,49 +281,23 @@ export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onVi
                  
                  const childTasks = stateRef.current.tasks.filter(t => t.clusterId === currentDrag.sourceId);
                  
-                 // Optimistic update - update UI immediately
-                 const newPositions = new Map(optimisticPositions);
-                 newPositions.set(`cluster-${currentDrag.sourceId}`, dropCoords);
+                 // Update cluster immediately (optimistic update in App.tsx)
+                 callbacksRef.current.onUpdateCluster(currentDrag.sourceId, { x: dropCoords.x, y: dropCoords.y });
+                 
+                 // Update child tasks immediately
                  childTasks.forEach(t => {
                      const tx = t.x ?? 0;
                      const ty = t.y ?? 0;
-                     newPositions.set(`task-${t.id}`, { x: tx + deltaX, y: ty + deltaY });
+                     callbacksRef.current.onUpdateTask(t.id, { x: tx + deltaX, y: ty + deltaY });
                  });
-                 setOptimisticPositions(newPositions);
-                 
-                 // Update database in background (non-blocking)
-                 setTimeout(() => {
-                     try {
-                         callbacksRef.current.onUpdateCluster(currentDrag.sourceId, { x: dropCoords.x, y: dropCoords.y });
-                         childTasks.forEach(t => {
-                             const tx = t.x ?? 0;
-                             const ty = t.y ?? 0;
-                             callbacksRef.current.onUpdateTask(t.id, { x: tx + deltaX, y: ty + deltaY });
-                         });
-                     } catch (err) {
-                         console.error('Error updating cluster/tasks:', err);
-                         setOptimisticPositions(new Map());
-                     }
-                 }, 0);
 
              } else if (currentDrag.type === 'hub') {
                  callbacksRef.current.onRequestNewCluster({ x: dropCoords.x, y: dropCoords.y });
              } else if (currentDrag.type === 'task_create') {
                  callbacksRef.current.onRequestNewTask(currentDrag.sourceId, { x: dropCoords.x, y: dropCoords.y });
              } else if (currentDrag.type === 'task') {
-                 // Optimistic update for single task
-                 const newPositions = new Map(optimisticPositions);
-                 newPositions.set(`task-${currentDrag.sourceId}`, dropCoords);
-                 setOptimisticPositions(newPositions);
-                 
-                 setTimeout(() => {
-                     try {
-                         callbacksRef.current.onUpdateTask(currentDrag.sourceId, { x: dropCoords.x, y: dropCoords.y });
-                     } catch (err) {
-                         console.error('Error updating task:', err);
-                         setOptimisticPositions(new Map());
-                     }
-                 }, 0);
+                 // Update task immediately (optimistic update in App.tsx)
+                 callbacksRef.current.onUpdateTask(currentDrag.sourceId, { x: dropCoords.x, y: dropCoords.y });
              }
              
              if (navigator.vibrate) navigator.vibrate(20);
@@ -339,7 +305,7 @@ export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onVi
       }
 
       updateDrag(null);
-  }, [optimisticPositions]);
+  }, []);
 
   const handleGlobalPointerMove = (e: PointerEvent) => {
       const currentDrag = dragInfoRef.current;
@@ -368,13 +334,6 @@ export const DashboardView: React.FC<DashboardProps> = ({ state, viewState, onVi
   
   // Calculate display position
   const getDisplayPosition = (id: string, staticX: number, staticY: number, type: DragState['type']) => {
-      // Check optimistic position first
-      const key = type === 'cluster' ? `cluster-${id}` : `task-${id}`;
-      const optimistic = optimisticPositions.get(key);
-      if (optimistic) {
-          return optimistic;
-      }
-      
       if (dragState?.isActive && dragState.sourceId === id && dragState.type === type) {
            // When dragging, snap to pointer (projected to world %)
            const percent = getPointerCoordsPercent(dragState.current.x, dragState.current.y);
