@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabase';
-import { Task, Cluster, Note, Event, ShoppingItem, Space, User } from '../types';
+import { Task, Cluster, Note, Event, ShoppingItem, ShoppingList, Space, User } from '../types';
 
 export const useSupabaseData = (userId: string | undefined, activeSpaceId: string) => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -8,6 +8,7 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
   const [notes, setNotes] = useState<Note[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
+  const [shoppingLists, setShoppingLists] = useState<ShoppingList[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [partner, setPartner] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,6 +135,24 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
           })));
         }
 
+        // Fetch shopping lists
+        const { data: shoppingListsData } = await supabase
+          .from('shopping_lists')
+          .select('*')
+          .eq('space_id', activeSpaceId)
+          .order('created_at', { ascending: true});
+        
+        if (shoppingListsData) {
+          setShoppingLists(shoppingListsData.map(sl => ({
+            id: sl.id,
+            title: sl.title,
+            icon: sl.icon,
+            spaceId: sl.space_id,
+            createdAt: new Date(sl.created_at).getTime(),
+            updatedAt: new Date(sl.updated_at).getTime()
+          })));
+        }
+
         // Fetch shopping
         const { data: shoppingData } = await supabase
           .from('shopping_items')
@@ -148,7 +167,8 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
             category: s.category,
             addedBy: s.added_by,
             isBought: s.is_bought,
-            spaceId: s.space_id
+            spaceId: s.space_id,
+            listId: s.list_id
           })));
         }
 
@@ -216,6 +236,7 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_lists', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'space_members' }, fetchData)
       .subscribe();
 
@@ -230,6 +251,7 @@ export const useSupabaseData = (userId: string | undefined, activeSpaceId: strin
     notes,
     events,
     shoppingList,
+    shoppingLists,
     spaces,
     partner,
     loading

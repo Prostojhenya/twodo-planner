@@ -20,12 +20,13 @@ const App = () => {
   const [activeSpaceId, setActiveSpaceId] = useState<string>('');
   
   // Load data from Supabase
-  const { tasks: remoteTasks, clusters: remoteClusters, notes, events, shoppingList: remoteShoppingList, spaces, partner, loading: dataLoading } = useSupabaseData(userId, activeSpaceId);
+  const { tasks: remoteTasks, clusters: remoteClusters, notes, events, shoppingList: remoteShoppingList, shoppingLists, spaces, partner, loading: dataLoading } = useSupabaseData(userId, activeSpaceId);
 
   // Local state for optimistic updates
   const [localClusters, setLocalClusters] = useState(remoteClusters);
   const [localTasks, setLocalTasks] = useState(remoteTasks);
   const [localShoppingList, setLocalShoppingList] = useState(remoteShoppingList);
+  const [activeShoppingListId, setActiveShoppingListId] = useState<string>('');
 
   // Sync remote data to local state
   useEffect(() => {
@@ -39,6 +40,13 @@ const App = () => {
   useEffect(() => {
     setLocalShoppingList(remoteShoppingList);
   }, [remoteShoppingList]);
+
+  // Set active shopping list when lists load
+  useEffect(() => {
+    if (shoppingLists.length > 0 && !activeShoppingListId) {
+      setActiveShoppingListId(shoppingLists[0].id);
+    }
+  }, [shoppingLists, activeShoppingListId]);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'tasks' | 'notes' | 'shopping' | 'calendar'>('dashboard');
@@ -241,7 +249,7 @@ const App = () => {
   };
 
   // Shopping optimistic handlers
-  const handleAddShoppingItem = async (item: { title: string; category: string }) => {
+  const handleAddShoppingItem = async (item: { title: string; category: string; listId?: string }) => {
     if (!activeSpaceId) return;
     
     const tempId = `temp-${Date.now()}`;
@@ -251,7 +259,8 @@ const App = () => {
       category: item.category,
       addedBy: 'ME',
       isBought: false,
-      spaceId: activeSpaceId
+      spaceId: activeSpaceId,
+      listId: item.listId || activeShoppingListId
     };
     
     // Optimistic update
@@ -259,7 +268,7 @@ const App = () => {
     
     // Background DB create
     try {
-      const newItem = await actions.createShoppingItem(activeSpaceId, item.title, item.category);
+      const newItem = await actions.createShoppingItem(activeSpaceId, item.title, item.category, item.listId || activeShoppingListId);
       setLocalShoppingList(prev => prev.map(i => i.id === tempId ? { ...tempItem, id: newItem.id } : i));
     } catch (err) {
       console.error('Error creating shopping item:', err);
@@ -293,6 +302,31 @@ const App = () => {
     } catch (err) {
       console.error('Error deleting shopping item:', err);
       setLocalShoppingList(remoteShoppingList);
+    }
+  };
+
+  // Shopping list handlers
+  const handleCreateShoppingList = async (title: string, icon: string) => {
+    if (!activeSpaceId) return;
+    
+    try {
+      const newList = await actions.createShoppingList(activeSpaceId, title, icon);
+      setActiveShoppingListId(newList.id);
+    } catch (err) {
+      console.error('Error creating shopping list:', err);
+    }
+  };
+
+  const handleDeleteShoppingList = async (id: string) => {
+    if (shoppingLists.length <= 1) return; // Don't delete last list
+    
+    try {
+      await actions.deleteShoppingList(id);
+      if (activeShoppingListId === id) {
+        setActiveShoppingListId(shoppingLists[0].id);
+      }
+    } catch (err) {
+      console.error('Error deleting shopping list:', err);
     }
   };
 
@@ -520,7 +554,12 @@ const App = () => {
           }
           {activeTab === 'shopping' && 
             <ShoppingView 
-              items={localShoppingList}
+              items={localShoppingList.filter(i => !activeShoppingListId || i.listId === activeShoppingListId)}
+              lists={shoppingLists}
+              activeListId={activeShoppingListId}
+              onSelectList={setActiveShoppingListId}
+              onCreateList={handleCreateShoppingList}
+              onDeleteList={handleDeleteShoppingList}
               addItem={handleAddShoppingItem}
               toggleItem={handleToggleShoppingItem}
               deleteItem={handleDeleteShoppingItem}

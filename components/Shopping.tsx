@@ -1,10 +1,15 @@
 import React, { useState } from 'react';
-import { ShoppingItem, Assignee, User } from '../types';
-import { Card, AssigneeAvatar, SectionHeader } from './UI';
-import { ShoppingCart, Plus, Trash2, Check, GripVertical } from 'lucide-react';
+import { ShoppingItem, ShoppingList, Assignee, User } from '../types';
+import { Card, AssigneeAvatar, SectionHeader, Modal, Input } from './UI';
+import { ShoppingCart, Plus, Trash2, Check, GripVertical, FolderPlus, ChevronDown } from 'lucide-react';
 
 interface ShoppingProps {
   items: ShoppingItem[];
+  lists: ShoppingList[];
+  activeListId: string;
+  onSelectList: (listId: string) => void;
+  onCreateList: (title: string, icon: string) => void;
+  onDeleteList: (listId: string) => void;
   addItem: (item: Omit<ShoppingItem, 'id' | 'isBought' | 'addedBy'>) => void;
   toggleItem: (id: string) => void;
   deleteItem: (id: string) => void;
@@ -12,17 +17,44 @@ interface ShoppingProps {
   partner: User;
 }
 
-export const ShoppingView: React.FC<ShoppingProps> = ({ items, addItem, toggleItem, deleteItem, currentUser, partner }) => {
+export const ShoppingView: React.FC<ShoppingProps> = ({ 
+  items, 
+  lists, 
+  activeListId, 
+  onSelectList, 
+  onCreateList, 
+  onDeleteList,
+  addItem, 
+  toggleItem, 
+  deleteItem, 
+  currentUser, 
+  partner 
+}) => {
   const [newItemTitle, setNewItemTitle] = useState('');
+  const [isListModalOpen, setIsListModalOpen] = useState(false);
+  const [newListTitle, setNewListTitle] = useState('');
+  const [newListIcon, setNewListIcon] = useState('🛒');
+  const [showListDropdown, setShowListDropdown] = useState(false);
+  
+  const activeList = lists.find(l => l.id === activeListId) || lists[0];
   
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemTitle.trim()) return;
     addItem({
       title: newItemTitle,
-      category: 'General', 
+      category: 'General',
+      listId: activeListId
     });
     setNewItemTitle('');
+  };
+
+  const handleCreateList = () => {
+    if (!newListTitle.trim()) return;
+    onCreateList(newListTitle, newListIcon);
+    setIsListModalOpen(false);
+    setNewListTitle('');
+    setNewListIcon('🛒');
   };
 
   const boughtItems = items.filter(i => i.isBought);
@@ -30,11 +62,71 @@ export const ShoppingView: React.FC<ShoppingProps> = ({ items, addItem, toggleIt
 
   return (
     <div className="pt-8 px-6 pb-28">
-      <div className="flex items-center gap-3 mb-8">
-         <div className="p-3 bg-white border-2 border-black rounded-2xl shadow-[4px_4px_0px_black]">
-            <ShoppingCart size={24} className="text-black" />
-         </div>
-         <h1 className="text-3xl font-black text-black tracking-tight">Procurement<br/><span className="text-slate-400 text-lg font-medium">List</span></h1>
+      {/* Header with List Selector */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-white border-2 border-black rounded-2xl shadow-[4px_4px_0px_black]">
+              <ShoppingCart size={24} className="text-black" />
+            </div>
+            <h1 className="text-3xl font-black text-black tracking-tight">Shopping<br/><span className="text-slate-400 text-lg font-medium">Lists</span></h1>
+          </div>
+          <button
+            onClick={() => setIsListModalOpen(true)}
+            className="p-3 bg-black text-white rounded-full hover:scale-110 transition-transform"
+          >
+            <FolderPlus size={20} />
+          </button>
+        </div>
+
+        {/* List Selector */}
+        {lists.length > 1 && (
+          <div className="relative">
+            <button
+              onClick={() => setShowListDropdown(!showListDropdown)}
+              className="w-full bg-white border-2 border-black rounded-xl p-4 flex items-center justify-between hover:shadow-[4px_4px_0px_black] transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{activeList?.icon}</span>
+                <span className="font-bold text-lg">{activeList?.title}</span>
+              </div>
+              <ChevronDown size={20} className={`transition-transform ${showListDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showListDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-black rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto">
+                {lists.map(list => (
+                  <button
+                    key={list.id}
+                    onClick={() => {
+                      onSelectList(list.id);
+                      setShowListDropdown(false);
+                    }}
+                    className={`w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                      list.id === activeListId ? 'bg-slate-100' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{list.icon}</span>
+                      <span className="font-bold">{list.title}</span>
+                    </div>
+                    {lists.length > 1 && list.id !== lists[0].id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteList(list.id);
+                        }}
+                        className="text-slate-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick Add Bar - Technical Style */}
@@ -133,6 +225,42 @@ export const ShoppingView: React.FC<ShoppingProps> = ({ items, addItem, toggleIt
           </div>
         )}
       </div>
+
+      {/* Modal for creating new list */}
+      <Modal isOpen={isListModalOpen} onClose={() => setIsListModalOpen(false)} title="Новый список">
+        <Input
+          autoFocus
+          label="Название"
+          placeholder="Продукты, Хозтовары..."
+          value={newListTitle}
+          onChange={(e) => setNewListTitle(e.target.value)}
+        />
+        <div className="mb-6">
+          <label className="block text-sm font-bold mb-2">Иконка</label>
+          <div className="flex gap-2 flex-wrap">
+            {['🛒', '🍎', '🏠', '🧹', '👕', '🎁', '🔧', '📚'].map(icon => (
+              <button
+                key={icon}
+                onClick={() => setNewListIcon(icon)}
+                className={`text-3xl p-3 rounded-xl border-2 transition-all ${
+                  newListIcon === icon 
+                    ? 'border-black bg-slate-100 scale-110' 
+                    : 'border-slate-200 hover:border-slate-400'
+                }`}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={handleCreateList}
+          disabled={!newListTitle.trim()}
+          className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 hover:scale-105 transition-transform"
+        >
+          Создать список
+        </button>
+      </Modal>
     </div>
   );
 };
