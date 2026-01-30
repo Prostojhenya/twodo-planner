@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShoppingItem, ShoppingList, Assignee, User } from '../types';
 import { Card, AssigneeAvatar, SectionHeader, Modal, Input } from './UI';
-import { ShoppingCart, Plus, Trash2, Check, GripVertical, FolderPlus, ChevronDown } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, Check, GripVertical, FolderPlus, ChevronDown, ArrowLeft } from 'lucide-react';
 
 interface ShoppingProps {
   items: ShoppingItem[];
@@ -34,9 +34,9 @@ export const ShoppingView: React.FC<ShoppingProps> = ({
   const [isListModalOpen, setIsListModalOpen] = useState(false);
   const [newListTitle, setNewListTitle] = useState('');
   const [newListIcon, setNewListIcon] = useState('🛒');
-  const [showListDropdown, setShowListDropdown] = useState(false);
+  const [viewMode, setViewMode] = useState<'lists' | 'items'>('lists');
   
-  const activeList = lists.find(l => l.id === activeListId) || lists[0];
+  const activeList = lists.find(l => l.id === activeListId);
   
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,118 +57,167 @@ export const ShoppingView: React.FC<ShoppingProps> = ({
     setNewListIcon('🛒');
   };
 
+  const handleSelectList = (listId: string) => {
+    onSelectList(listId);
+    setViewMode('items');
+  };
+
   const boughtItems = items.filter(i => i.isBought);
   const activeItems = items.filter(i => !i.isBought);
 
-  return (
-    <div className="pt-8 px-6 pb-28">
-      {/* Header with List Selector */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-white border-2 border-black rounded-2xl shadow-[4px_4px_0px_black]">
-              <ShoppingCart size={24} className="text-black" />
-            </div>
-            <h1 className="text-3xl font-black text-black tracking-tight">Shopping<br/><span className="text-slate-400 text-lg font-medium">Lists</span></h1>
+  // Lists view - tiles like clusters
+  if (viewMode === 'lists') {
+    return (
+      <div className="pt-8 px-6 pb-28">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="p-3 bg-white border-2 border-black rounded-2xl shadow-[4px_4px_0px_black]">
+            <ShoppingCart size={24} className="text-black" />
           </div>
+          <h1 className="text-3xl font-black text-black tracking-tight">Shopping<br/><span className="text-slate-400 text-lg font-medium">Lists</span></h1>
+        </div>
+
+        {/* Lists Grid */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          {lists.map(list => {
+            const listItems = items.filter(i => i.listId === list.id);
+            const activeCount = listItems.filter(i => !i.isBought).length;
+            
+            return (
+              <div
+                key={list.id}
+                onClick={() => handleSelectList(list.id)}
+                className="relative bg-white border-2 border-black rounded-2xl p-6 shadow-[4px_4px_0px_black] hover:shadow-[6px_6px_0px_black] hover:-translate-y-1 transition-all cursor-pointer"
+              >
+                {lists.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteList(list.id);
+                    }}
+                    className="absolute top-2 right-2 text-slate-300 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+                <div className="text-center">
+                  <div className="text-5xl mb-3">{list.icon}</div>
+                  <h3 className="font-black text-lg mb-2">{list.title}</h3>
+                  <div className="text-3xl font-black text-black">{activeCount}</div>
+                  <div className="text-xs text-slate-400 uppercase tracking-wider">items</div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Add New List Tile */}
           <button
             onClick={() => setIsListModalOpen(true)}
-            className="p-3 bg-black text-white rounded-full hover:scale-110 transition-transform"
+            className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-6 hover:border-black hover:bg-white transition-all flex flex-col items-center justify-center gap-2"
           >
-            <FolderPlus size={20} />
+            <Plus size={32} className="text-slate-400" />
+            <span className="font-bold text-slate-400">New List</span>
           </button>
         </div>
 
-        {/* List Selector */}
-        {lists.length > 1 && (
-          <div className="relative">
-            <button
-              onClick={() => setShowListDropdown(!showListDropdown)}
-              className="w-full bg-white border-2 border-black rounded-xl p-4 flex items-center justify-between hover:shadow-[4px_4px_0px_black] transition-all"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{activeList?.icon}</span>
-                <span className="font-bold text-lg">{activeList?.title}</span>
-              </div>
-              <ChevronDown size={20} className={`transition-transform ${showListDropdown ? 'rotate-180' : ''}`} />
-            </button>
-
-            {showListDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border-2 border-black rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto">
-                {lists.map(list => (
-                  <button
-                    key={list.id}
-                    onClick={() => {
-                      onSelectList(list.id);
-                      setShowListDropdown(false);
-                    }}
-                    className={`w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors ${
-                      list.id === activeListId ? 'bg-slate-100' : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{list.icon}</span>
-                      <span className="font-bold">{list.title}</span>
-                    </div>
-                    {lists.length > 1 && list.id !== lists[0].id && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteList(list.id);
-                        }}
-                        className="text-slate-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+        {/* Modal for creating new list */}
+        <Modal isOpen={isListModalOpen} onClose={() => setIsListModalOpen(false)} title="Новый список">
+          <Input
+            autoFocus
+            label="Название"
+            placeholder="Продукты, Хозтовары..."
+            value={newListTitle}
+            onChange={(e) => setNewListTitle(e.target.value)}
+          />
+          <div className="mb-6">
+            <label className="block text-sm font-bold mb-2">Иконка</label>
+            <div className="flex gap-2 flex-wrap">
+              {['🛒', '🍎', '🏠', '🧹', '👕', '🎁', '🔧', '📚'].map(icon => (
+                <button
+                  key={icon}
+                  onClick={() => setNewListIcon(icon)}
+                  className={`text-3xl p-3 rounded-xl border-2 transition-all ${
+                    newListIcon === icon 
+                      ? 'border-black bg-slate-100 scale-110' 
+                      : 'border-slate-200 hover:border-slate-400'
+                  }`}
+                >
+                  {icon}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
+          <button
+            onClick={handleCreateList}
+            disabled={!newListTitle.trim()}
+            className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 hover:scale-105 transition-transform"
+          >
+            Создать список
+          </button>
+        </Modal>
+      </div>
+    );
+  }
+
+  // Items view - list of items
+  return (
+    <div className="pt-8 px-6 pb-28">
+      {/* Header with back button */}
+      <div className="mb-8">
+        <button
+          onClick={() => setViewMode('lists')}
+          className="flex items-center gap-2 text-slate-400 hover:text-black transition-colors mb-4"
+        >
+          <ArrowLeft size={20} />
+          <span className="font-bold">Back to lists</span>
+        </button>
+        
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-white border-2 border-black rounded-2xl shadow-[4px_4px_0px_black]">
+            <span className="text-2xl">{activeList?.icon}</span>
+          </div>
+          <h1 className="text-3xl font-black text-black tracking-tight">{activeList?.title}<br/><span className="text-slate-400 text-lg font-medium">List</span></h1>
+        </div>
       </div>
 
-      {/* Quick Add Bar - Technical Style */}
+      {/* Quick Add Bar */}
       <div className="mb-10 relative">
-          <div className="absolute inset-0 bg-black translate-y-1 translate-x-1 rounded-full opacity-10" />
-          <div className="bg-white relative rounded-full border-2 border-black p-1.5 flex items-center">
-            <form onSubmit={handleAdd} className="flex-1 flex items-center">
-                <input
-                    type="text"
-                    placeholder="Input item..."
-                    className="flex-1 bg-transparent border-none outline-none text-black font-bold placeholder:text-slate-300 px-4 h-12 text-lg font-mono"
-                    value={newItemTitle}
-                    onChange={(e) => setNewItemTitle(e.target.value)}
-                />
-                <button 
-                    type="submit"
-                    disabled={!newItemTitle.trim()}
-                    className="w-12 h-12 rounded-full bg-black text-white flex items-center justify-center disabled:opacity-50 transition-all hover:scale-105 active:scale-95"
-                >
-                    <Plus size={24} />
-                </button>
-            </form>
-          </div>
+        <div className="absolute inset-0 bg-black translate-y-1 translate-x-1 rounded-full opacity-10" />
+        <div className="bg-white relative rounded-full border-2 border-black p-1.5 flex items-center">
+          <form onSubmit={handleAdd} className="flex-1 flex items-center">
+            <input
+              type="text"
+              placeholder="Input item..."
+              className="flex-1 bg-transparent border-none outline-none text-black font-bold placeholder:text-slate-300 px-4 h-12 text-lg font-mono"
+              value={newItemTitle}
+              onChange={(e) => setNewItemTitle(e.target.value)}
+            />
+            <button 
+              type="submit"
+              disabled={!newItemTitle.trim()}
+              className="w-12 h-12 rounded-full bg-black text-white flex items-center justify-center disabled:opacity-50 transition-all hover:scale-105 active:scale-95"
+            >
+              <Plus size={24} />
+            </button>
+          </form>
+        </div>
       </div>
 
       <div className="space-y-8">
         {/* Active Items */}
         {activeItems.length > 0 && (
           <div className="space-y-3">
-             <div className="flex items-center gap-2 mb-2 opacity-50">
-                <div className="w-1 h-1 bg-black rounded-full" />
-                <div className="w-1 h-1 bg-black rounded-full" />
-                <div className="w-1 h-1 bg-black rounded-full" />
-                <span className="text-xs font-mono uppercase tracking-widest ml-2">Pending Acquisition</span>
-             </div>
+            <div className="flex items-center gap-2 mb-2 opacity-50">
+              <div className="w-1 h-1 bg-black rounded-full" />
+              <div className="w-1 h-1 bg-black rounded-full" />
+              <div className="w-1 h-1 bg-black rounded-full" />
+              <span className="text-xs font-mono uppercase tracking-widest ml-2">Pending Acquisition</span>
+            </div>
             
             {activeItems.map(item => (
               <div 
                 key={item.id} 
                 className="group relative"
               >
-                {/* Connecting line segment */}
                 <div className="absolute left-6 -top-4 -bottom-4 w-[1px] bg-slate-200 -z-10 group-first:top-4 group-last:bottom-1/2" />
 
                 <div 
@@ -199,7 +248,7 @@ export const ShoppingView: React.FC<ShoppingProps> = ({
         {/* Bought Items */}
         {boughtItems.length > 0 && (
           <div className="space-y-3 pt-8 border-t-2 border-dashed border-slate-200">
-             <span className="text-xs font-mono uppercase tracking-widest text-slate-400 block mb-2">Acquired</span>
+            <span className="text-xs font-mono uppercase tracking-widest text-slate-400 block mb-2">Acquired</span>
             {boughtItems.map(item => (
               <div 
                 key={item.id} 
@@ -210,57 +259,21 @@ export const ShoppingView: React.FC<ShoppingProps> = ({
                   onClick={() => toggleItem(item.id)}
                 >
                   <div className="w-5 h-5 bg-black rounded flex items-center justify-center text-white">
-                      <Check size={12} strokeWidth={4} />
+                    <Check size={12} strokeWidth={4} />
                   </div>
                   <span className="text-black font-medium line-through decoration-2 font-mono">{item.title}</span>
                 </div>
                 <button 
-                    onClick={() => deleteItem(item.id)}
-                    className="text-slate-300 hover:text-red-400"
-                  >
-                    <Trash2 size={16} />
+                  onClick={() => deleteItem(item.id)}
+                  className="text-slate-300 hover:text-red-400"
+                >
+                  <Trash2 size={16} />
                 </button>
               </div>
             ))}
           </div>
         )}
       </div>
-
-      {/* Modal for creating new list */}
-      <Modal isOpen={isListModalOpen} onClose={() => setIsListModalOpen(false)} title="Новый список">
-        <Input
-          autoFocus
-          label="Название"
-          placeholder="Продукты, Хозтовары..."
-          value={newListTitle}
-          onChange={(e) => setNewListTitle(e.target.value)}
-        />
-        <div className="mb-6">
-          <label className="block text-sm font-bold mb-2">Иконка</label>
-          <div className="flex gap-2 flex-wrap">
-            {['🛒', '🍎', '🏠', '🧹', '👕', '🎁', '🔧', '📚'].map(icon => (
-              <button
-                key={icon}
-                onClick={() => setNewListIcon(icon)}
-                className={`text-3xl p-3 rounded-xl border-2 transition-all ${
-                  newListIcon === icon 
-                    ? 'border-black bg-slate-100 scale-110' 
-                    : 'border-slate-200 hover:border-slate-400'
-                }`}
-              >
-                {icon}
-              </button>
-            ))}
-          </div>
-        </div>
-        <button
-          onClick={handleCreateList}
-          disabled={!newListTitle.trim()}
-          className="w-full bg-black text-white py-4 rounded-full font-bold disabled:opacity-50 hover:scale-105 transition-transform"
-        >
-          Создать список
-        </button>
-      </Modal>
     </div>
   );
 };
