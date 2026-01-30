@@ -142,8 +142,8 @@ const App = () => {
   };
 
   const handleCopyInvite = () => {
-      // Generate unique invite code based on user ID
-      const inviteCode = btoa(user.id + ':' + Date.now()).replace(/=/g, '');
+      // Generate stable invite code based on user ID
+      const inviteCode = btoa(user.id + ':invite').replace(/=/g, '');
       const inviteLink = `${window.location.origin}${window.location.pathname}#/invite/${inviteCode}`;
       
       navigator.clipboard.writeText(inviteLink).then(() => {
@@ -195,27 +195,55 @@ const App = () => {
       if (inviteMatch && inviteMatch[1]) {
           const inviteCode = inviteMatch[1];
           
-          // Show prompt to accept invite
-          if (user.name) {
-              const accept = window.confirm(
-                  `Вы хотите присоединиться к пространству партнёра?\n\nВаше имя: ${user.name}`
-              );
+          // Decode invite to get inviter's user ID
+          try {
+              const decoded = atob(inviteCode);
+              const [inviterId] = decoded.split(':');
               
-              if (accept) {
-                  // In real app, this would send user data to partner via Supabase
-                  // For now, just show success message
-                  alert(`Запрос отправлен! Партнёр получит уведомление.`);
+              // Show prompt to accept invite
+              if (user.name) {
+                  const accept = window.confirm(
+                      `Вы хотите присоединиться к пространству партнёра?\n\nВаше имя: ${user.name}\n\nПосле принятия вы станете партнёрами и сможете совместно работать.`
+                  );
                   
-                  // Clear invite from URL
-                  window.location.hash = '#/';
+                  if (accept) {
+                      // Store invite acceptance data
+                      const inviteData = {
+                          inviterId,
+                          inviteeId: user.id,
+                          inviteeName: user.name,
+                          inviteeInitials: user.initials,
+                          inviteeColor: user.avatarColor,
+                          timestamp: Date.now()
+                      };
+                      
+                      // Save to localStorage for the inviter to pick up
+                      const pendingInvites = JSON.parse(localStorage.getItem('twodo_pending_invites') || '[]');
+                      pendingInvites.push(inviteData);
+                      localStorage.setItem('twodo_pending_invites', JSON.stringify(pendingInvites));
+                      
+                      // Also set partner immediately for this user
+                      // In a real app with Supabase, this would sync automatically
+                      alert(`Вы присоединились! Теперь вы партнёры.`);
+                      
+                      // Clear invite from URL
+                      window.location.hash = '#/';
+                  } else {
+                      // User declined
+                      window.location.hash = '#/';
+                  }
+              } else {
+                  // User needs to set up their profile first
+                  alert('Сначала создайте свой профиль, затем примите приглашение.');
+                  setIsSetupModalOpen(true);
+                  
+                  // Store invite code to process after setup
+                  localStorage.setItem('twodo_pending_invite', inviteCode);
               }
-          } else {
-              // User needs to set up their profile first
-              alert('Сначала создайте свой профиль, затем примите приглашение.');
-              setIsSetupModalOpen(true);
-              
-              // Store invite code to process after setup
-              localStorage.setItem('twodo_pending_invite', inviteCode);
+          } catch (e) {
+              console.error('Invalid invite code:', e);
+              alert('Неверная ссылка-приглашение');
+              window.location.hash = '#/';
           }
       }
       
@@ -223,9 +251,43 @@ const App = () => {
       const pendingInvite = localStorage.getItem('twodo_pending_invite');
       if (pendingInvite && user.name) {
           localStorage.removeItem('twodo_pending_invite');
-          alert(`Запрос отправлен! Партнёр получит уведомление.`);
+          // Trigger the invite flow again
+          window.location.hash = `#/invite/${pendingInvite}`;
       }
-  }, [user.name]);
+  }, [user.name, user.id, user.initials, user.avatarColor]);
+
+  // Check for accepted invites (for the inviter)
+  useEffect(() => {
+      const checkInterval = setInterval(() => {
+          const pendingInvites = JSON.parse(localStorage.getItem('twodo_pending_invites') || '[]');
+          
+          if (pendingInvites.length > 0 && user.id) {
+              // Find invites for this user
+              const myInvites = pendingInvites.filter((inv: any) => inv.inviterId === user.id);
+              
+              if (myInvites.length > 0) {
+                  // Get the most recent invite
+                  const latestInvite = myInvites[myInvites.length - 1];
+                  
+                  // Set partner
+                  setPartner({
+                      id: latestInvite.inviteeId,
+                      name: latestInvite.inviteeName,
+                      initials: latestInvite.inviteeInitials,
+                      avatarColor: latestInvite.inviteeColor
+                  });
+                  
+                  // Remove processed invites
+                  const remainingInvites = pendingInvites.filter((inv: any) => inv.inviterId !== user.id);
+                  localStorage.setItem('twodo_pending_invites', JSON.stringify(remainingInvites));
+                  
+                  alert(`${latestInvite.inviteeName} принял ваше приглашение! Теперь вы партнёры.`);
+              }
+          }
+      }, 2000); // Check every 2 seconds
+      
+      return () => clearInterval(checkInterval);
+  }, [user.id]);
 
   // --- Actions ---
   const addCluster = (title: string, color: ClusterColor, size: ClusterSize, x?: number, y?: number) => {
@@ -781,7 +843,7 @@ const App = () => {
           <div className="w-full bg-slate-50 p-4 rounded-xl border border-slate-200">
             <p className="text-xs text-slate-500 mb-2 text-center">Ссылка-приглашение</p>
             <div className="bg-white p-3 rounded-lg border border-slate-200 break-all text-xs text-slate-700 font-mono">
-              {window.location.origin}{window.location.pathname}#/invite/{btoa(user.id + ':' + Date.now()).replace(/=/g, '')}
+              {window.location.origin}{window.location.pathname}#/invite/{btoa(user.id + ':invite').replace(/=/g, '')}
             </div>
           </div>
 
