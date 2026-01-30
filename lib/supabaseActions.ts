@@ -75,6 +75,25 @@ export const updateTask = async (id: string, updates: Partial<Task>) => {
   if (error) throw error;
 };
 
+// Batch update tasks (for moving multiple tasks at once)
+export const updateTasksBatch = async (updates: Array<{ id: string; x: number; y: number }>) => {
+  // Update tasks in parallel
+  const promises = updates.map(({ id, x, y }) =>
+    supabase
+      .from('tasks')
+      .update({ x, y })
+      .eq('id', id)
+  );
+
+  const results = await Promise.all(promises);
+  const errors = results.filter(r => r.error).map(r => r.error);
+  
+  if (errors.length > 0) {
+    console.error('Batch update errors:', errors);
+    throw errors[0];
+  }
+};
+
 export const deleteTask = async (id: string) => {
   const { error } = await supabase
     .from('tasks')
