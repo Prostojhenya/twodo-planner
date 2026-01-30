@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabase';
-import { Task, Cluster, Note, Event, ShoppingItem, Space } from '../types';
+import { Task, Cluster, Note, Event, ShoppingItem, Space, User } from '../types';
 
-export const useSupabaseData = (activeSpaceId: string) => {
+export const useSupabaseData = (userId: string | undefined, activeSpaceId: string) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
+  const [partner, setPartner] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch all data for active space
+  // Fetch all data
   useEffect(() => {
-    if (!activeSpaceId) return;
+    if (!userId) return;
 
     const fetchData = async () => {
       setLoading(true);
@@ -23,6 +24,7 @@ export const useSupabaseData = (activeSpaceId: string) => {
         const { data: spacesData } = await supabase
           .from('spaces')
           .select('*')
+          .or(`owner_id.eq.${userId},id.in.(select space_id from space_members where user_id = ${userId})`)
           .order('created_at', { ascending: true });
         
         if (spacesData) {
@@ -35,7 +37,12 @@ export const useSupabaseData = (activeSpaceId: string) => {
           })));
         }
 
-        // Fetch clusters for active space
+        if (!activeSpaceId) {
+          setLoading(false);
+          return;
+        }
+
+        // Fetch clusters
         const { data: clustersData } = await supabase
           .from('clusters')
           .select('*')
@@ -55,7 +62,7 @@ export const useSupabaseData = (activeSpaceId: string) => {
           })));
         }
 
-        // Fetch tasks for active space
+        // Fetch tasks
         const { data: tasksData } = await supabase
           .from('tasks')
           .select('*')
@@ -78,7 +85,7 @@ export const useSupabaseData = (activeSpaceId: string) => {
           })));
         }
 
-        // Fetch notes for active space
+        // Fetch notes
         const { data: notesData } = await supabase
           .from('notes')
           .select('*')
@@ -96,7 +103,7 @@ export const useSupabaseData = (activeSpaceId: string) => {
           })));
         }
 
-        // Fetch events for active space
+        // Fetch events
         const { data: eventsData } = await supabase
           .from('events')
           .select('*')
@@ -116,12 +123,12 @@ export const useSupabaseData = (activeSpaceId: string) => {
           })));
         }
 
-        // Fetch shopping items for active space
+        // Fetch shopping
         const { data: shoppingData } = await supabase
           .from('shopping_items')
           .select('*')
           .eq('space_id', activeSpaceId)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false});
         
         if (shoppingData) {
           setShoppingList(shoppingData.map(s => ({
@@ -134,6 +141,39 @@ export const useSupabaseData = (activeSpaceId: string) => {
           })));
         }
 
+        // Fetch partner
+        const { data: sharedSpaces } = await supabase
+          .from('spaces')
+          .select('id')
+          .eq('type', 'shared')
+          .or(`owner_id.eq.${userId},id.in.(select space_id from space_members where user_id = ${userId})`);
+
+        if (sharedSpaces && sharedSpaces.length > 0) {
+          const { data: members } = await supabase
+            .from('space_members')
+            .select('user_id')
+            .in('space_id', sharedSpaces.map(s => s.id))
+            .neq('user_id', userId)
+            .limit(1);
+
+          if (members && members.length > 0) {
+            const { data: partnerData } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', members[0].user_id)
+              .single();
+
+            if (partnerData) {
+              setPartner({
+                id: partnerData.id,
+                name: partnerData.name,
+                initials: partnerData.initials,
+                avatarColor: partnerData.avatar_color
+              });
+            }
+          }
+        }
+
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -144,25 +184,20 @@ export const useSupabaseData = (activeSpaceId: string) => {
     fetchData();
 
     // Subscribe to realtime changes
-    const tasksSubscription = supabase
-      .channel('tasks-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `space_id=eq.${activeSpaceId}` }, () => {
-        fetchData();
-      })
-      .subscribe();
-
-    const clustersSubscription = supabase
-      .channel('clusters-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'clusters', filter: `space_id=eq.${activeSpaceId}` }, () => {
-        fetchData();
-      })
+    const channel = supabase
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clusters', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notes', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping_items', filter: `space_id=eq.${activeSpaceId}` }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'space_members' }, fetchData)
       .subscribe();
 
     return () => {
-      tasksSubscription.unsubscribe();
-      clustersSubscription.unsubscribe();
+      channel.unsubscribe();
     };
-  }, [activeSpaceId]);
+  }, [userId, activeSpaceId]);
 
   return {
     tasks,
@@ -171,12 +206,7 @@ export const useSupabaseData = (activeSpaceId: string) => {
     events,
     shoppingList,
     spaces,
-    loading,
-    setTasks,
-    setClusters,
-    setNotes,
-    setEvents,
-    setShoppingList,
-    setSpaces
+    partner,
+    loading
   };
 };
