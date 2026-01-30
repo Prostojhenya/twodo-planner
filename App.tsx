@@ -147,7 +147,10 @@ const App = () => {
       finalY = 50 + (Math.random() - 0.5) * 30;
     }
 
-    await actions.createTask(activeSpaceId, {
+    // Create temporary task for optimistic update
+    const tempId = `temp-${Date.now()}`;
+    const tempTask: Task = {
+      id: tempId,
       title: newTaskTitle,
       priority: newTaskPriority,
       assignee: newTaskAssignee,
@@ -156,10 +159,37 @@ const App = () => {
       clusterId: targetClusterIdForTask,
       x: finalX,
       y: finalY,
-    });
+      createdAt: Date.now(),
+      spaceId: activeSpaceId
+    };
 
+    // Optimistic update - show immediately
+    setLocalTasks(prev => [...prev, tempTask]);
     setIsTaskModalOpen(false);
+    setNewTaskTitle('');
     setNewTaskCoords(undefined);
+    setTargetClusterIdForTask(undefined);
+
+    // Background DB create
+    try {
+      const newTask = await actions.createTask(activeSpaceId, {
+        title: newTaskTitle,
+        priority: newTaskPriority,
+        assignee: newTaskAssignee,
+        status: Status.TODO,
+        deadline: newTaskDeadline || undefined,
+        clusterId: targetClusterIdForTask,
+        x: finalX,
+        y: finalY,
+      });
+      
+      // Replace temp with real
+      setLocalTasks(prev => prev.map(t => t.id === tempId ? { ...tempTask, id: newTask.id } : t));
+    } catch (err) {
+      console.error('Error creating task:', err);
+      // Remove temp on error
+      setLocalTasks(prev => prev.filter(t => t.id !== tempId));
+    }
   };
 
   // Optimistic action wrappers
@@ -186,6 +216,20 @@ const App = () => {
       await actions.updateTask(id, updates);
     } catch (err) {
       console.error('Error updating task:', err);
+      // Revert on error
+      setLocalTasks(remoteTasks);
+    }
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    // Optimistic delete
+    setLocalTasks(prev => prev.filter(t => t.id !== id));
+    
+    // Background DB delete
+    try {
+      await actions.deleteTask(id);
+    } catch (err) {
+      console.error('Error deleting task:', err);
       // Revert on error
       setLocalTasks(remoteTasks);
     }
@@ -365,11 +409,36 @@ const App = () => {
                 else setCurrentClusterId(id);
               }}
               addCluster={async (title, color, size) => {
-                if (activeSpaceId) await actions.createCluster(activeSpaceId, title, color, size);
+                if (!activeSpaceId) return;
+                
+                // Create temporary cluster
+                const tempId = `temp-${Date.now()}`;
+                const tempCluster: Cluster = {
+                  id: tempId,
+                  title,
+                  color,
+                  size,
+                  x: 50,
+                  y: 20,
+                  createdAt: Date.now(),
+                  spaceId: activeSpaceId
+                };
+                
+                // Optimistic update
+                setLocalClusters(prev => [...prev, tempCluster]);
+                
+                // Background DB create
+                try {
+                  const newCluster = await actions.createCluster(activeSpaceId, title, color, size);
+                  setLocalClusters(prev => prev.map(c => c.id === tempId ? { ...tempCluster, id: newCluster.id } : c));
+                } catch (err) {
+                  console.error('Error creating cluster:', err);
+                  setLocalClusters(prev => prev.filter(c => c.id !== tempId));
+                }
               }}
               updateCluster={handleUpdateCluster}
               updateTask={handleUpdateTask}
-              deleteTask={(id) => actions.deleteTask(id)}
+              deleteTask={handleDeleteTask}
               onRequestNewTask={() => {
                 setTargetClusterIdForTask(currentClusterId && currentClusterId !== 'ALL' && currentClusterId !== 'GENERAL' ? currentClusterId : undefined);
                 setIsTaskModalOpen(true);
